@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aiixi Bear的TOTP</title>
+<link rel="manifest" href="site.webmanifest" />
+<link rel="icon" href="https://bearshen.top/favicon.ico" type="image/ico">
+<link rel="preconnect" href="https://challenges.cloudflare.com">
+<style>
+    @font-face {
+    font-family: 'Huninn';
+    src: url('https://bearshen.top/fonts/Huninn-Regular.woff2') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    }
+    :root {
+        --primary-color: #33dd99;
+        --secondary-color: #39c5bb;
+        --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --glass-bg: rgba(255, 255, 255, 0.95);
+        --text-color: #334155;
+    }
+
+    * { box-sizing: border-box; transition: all 0.3s ease; }
+
+    body {
+        font-family: 'Huninn', sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: var(--bg-gradient);
+        color: var(--text-color);
+        padding: 20px;
+    }
+
+    /* 主容器卡片設計 */
+    .container {
+        background: var(--glass-bg);
+        padding: 2.5rem;
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        width: 100%;
+        max-width: 480px;
+        text-align: center;
+        backdrop-filter: blur(10px);
+        animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    h1 {
+        margin: 0 0 20px 0;
+        font-size: 2rem;
+        background: -webkit-linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    /* 輸入框樣式 */
+    input {
+        width: 100%;
+        padding: 12px 16px;
+        margin: 8px 0;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 1rem;
+        outline: none;
+        background: #f8fafc;
+    }
+
+    input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    /* 按鈕樣式 */
+    button {
+        width: 100%;
+        padding: 12px;
+        margin-top: 10px;
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    button:active { transform: translateY(0); }
+
+    /* Cloudflare Turnstile */
+    .cf-turnstile { margin-top: 15px; display: flex; justify-content: center; }
+
+    /* 驗證碼列表 */
+    #totp-codes {
+        margin-top: 25px;
+        display: grid;
+        gap: 12px;
+    }
+
+    .code-card {
+        background: white;
+        padding: 15px;
+        border-radius: 16px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+        overflow: hidden;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+
+    .code-card:hover {
+        transform: scale(1.02);
+        border-color: var(--primary-color);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+
+    .app-name { font-size: 0.9rem; color: #64748b; font-weight: 500; }
+    .app-code { font-size: 1.4rem; font-weight: 700; letter-spacing: 2px; color: var(--text-color); font-family: 'Poppins', monospace;}
+
+    /* 倒數計時條 */
+    .progress-container {
+        width: 100%;
+        height: 4px;
+        background: #e2e8f0;
+        border-radius: 2px;
+        margin-top: 20px;
+        overflow: hidden;
+        display: none; /* 預設隱藏 */
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        width: 100%;
+        transition: width 1s linear;
+    }
+
+    .timer-text {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-top: 5px;
+        display: block;
+    }
+
+    /* 複製成功的提示 */
+    .copied-toast {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(99, 102, 241, 0.9);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        border-radius: 16px;
+    }
+
+    #logout-button {
+        background: #fee2e2;
+        color: #ef4444;
+        box-shadow: none;
+        margin-top: 20px;
+    }
+    #logout-button:hover { background: #fecaca; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    #status { display: block; margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Aiixi Miku TOTP</h1>
+    <div style="margin-bottom: 15px; font-size: 0.85rem; color: #64748b;">
+    裝置時間：<span id="now-datetime">Loading...</span><br />
+    伺服器時間：<span id="server-datetime">Loading...</span>
+    </div>
+    <div id="login-form">
+        <input type="text" id="username" placeholder="請輸入帳號" />
+        <input type="password" id="password" placeholder="請輸入密碼" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAACMc7m5CnLl1fmZs"></div>
+        <button onclick="login()">大便登入</button>
+    </div>
+
+    <span id="status" style="color:#ef4444;"></span>
+
+    <div id="main-content" style="display:none;">
+        <div id="countdown-wrapper">
+            <div class="progress-container" id="progress-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <span class="timer-text">下次更新：<span id="time-left">30</span> 秒</span>
+        </div>
+
+        <div id="totp-codes"></div>
+        <button id="logout-button" onclick="logout()">登出</button>
+    </div>
+</div>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+let JWT_TOKEN = null;
+let fetchInterval = null;
+let countdownInterval = null;
+let serverTimeOffset = 0;
+
+
+// 取得當前時間
+function getCurrentDateTime() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const seconds = now.getSeconds().toString().padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+// 更新顯示當前時間的元素
+function updateCurrentDateTime() {
+    const nowDatetimeElement = document.getElementById('now-datetime');
+    const serverDatetimeElement = document.getElementById('server-datetime');
+    
+    const now = new Date();
+    
+    // 1. 顯示原本的裝置時間
+    if (nowDatetimeElement) {
+        nowDatetimeElement.textContent = formatDateTime(now);
+    }
+    
+    // 2. 顯示計算後的伺服器時間 (裝置目前時間 + 剛登入時算出的誤差)
+    if (serverDatetimeElement) {
+        const serverTime = new Date(Date.now() + serverTimeOffset);
+        serverDatetimeElement.textContent = formatDateTime(serverTime);
+    }
+}
+
+function formatDateTime(date) {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+// 初始設定
+updateCurrentDateTime();
+// 每秒更新一次時間
+setInterval(updateCurrentDateTime, 1000);
+
+function showMainContent(show) {
+    document.getElementById('login-form').style.display = show ? 'none' : 'block';
+    document.getElementById('main-content').style.display = show ? 'block' : 'none';
+    const progressContainer = document.getElementById('progress-container');
+    if(progressContainer) progressContainer.style.display = show ? 'block' : 'none';
+    if (!show) document.getElementById('status').textContent = '';
+}
+
+async function login() {
+    const usernameEl = document.getElementById('username');
+    const passwordEl = document.getElementById('password');
+    // 🌸 關鍵在這裡！拿到 Turnstile 的回應
+    const token = turnstile.getResponse();
+
+    // 🎀 第一關：檢查帳密有沒有填
+    if(!usernameEl.value || !passwordEl.value) {
+        alert("嗚哇！帳號密碼是空的，我會看不見妳啦！ >_<");
+        return;
+    }
+
+    // 🎀 第二關：檢查驗證過了嗎？ (如果 token 是空的就表示還沒勾勾喔！)
+    if (!token) {
+        alert("哼哼！請先完成我不是機器人驗證(⁠｡⁠・⁠/⁠/⁠/⁠・⁠｡⁠)");
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: usernameEl.value,
+                password: passwordEl.value,
+                cf_turnstile_token: token
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            document.getElementById('status').textContent = '登入失敗：' + (data.error || '未知錯誤');
+            // 登入失敗通常建議重置驗證碼，比較安全喔！
+            turnstile.reset(); 
+            return;
+        }
+
+        JWT_TOKEN = data.token;
+        localStorage.setItem('jwt_token', data.token);
+        startSession();
+    } catch (err) {
+        console.error(err);
+        document.getElementById('status').textContent = '連線出錯了，心碎了啦 QQ';
+        turnstile.reset();
+    }
+}
+
+
+
+async function startSession() {
+    // 🌸 既然要進來了，先檢查 Token 是否真的活著
+    try {
+        const res = await fetch('/api/validate', {
+            headers: { 'Authorization': 'Bearer ' + JWT_TOKEN }
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.serverTime) {
+            // 🌸 計算誤差：伺服器時間 - 本地時間
+            serverTimeOffset = data.serverTime - Date.now();
+            console.log("時間校正完成，誤差值：", serverTimeOffset, "ms");
+        }
+        
+        showMainContent(true);
+        fetchCodes();
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(updateCountdown, 1000);
+    } catch (e) {
+        logout(); // Token 壞掉了，乖乖去登入喔！
+    }
+}
+
+function updateCountdown() {
+    const el = document.getElementById('time-left');
+    const bar = document.getElementById('progress-bar');
+    if (!JWT_TOKEN) return;
+    
+    // 🌸 使用校正後的時間：本地時間 + 時間差
+    const correctedNow = Math.floor((Date.now() + serverTimeOffset) / 1000);
+    const secs = 30 - (correctedNow % 30);
+    
+    if (el) el.textContent = secs;
+    if (bar) {
+        const percent = (secs / 30) * 100;
+        bar.style.width = percent + '%';
+        bar.style.background = secs < 5 ? '#ef4444' : 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))';
+    }
+
+    if (secs === 30) fetchCodes();
+}
+
+async function fetchCodes() {
+    if (!JWT_TOKEN) return;
+    console.log("fetching new code");
+
+    try {
+        const res = await fetch('/api/totp', {
+            headers: { 'Authorization': 'Bearer ' + JWT_TOKEN }
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            document.getElementById('status').textContent = 'Token 累了，請重新登入喔！';
+            logout();
+            return;
+        }
+
+        const container = document.getElementById('totp-codes');
+        container.innerHTML = '';
+        
+        data.result.forEach(app => {
+            const div = document.createElement('div');
+            div.className = 'code-card';
+            // 修正後
+            div.innerHTML = `
+                <div style="text-align:left">
+                    <div class="app-name">${app.name}</div>
+                    <div class="app-code">${formatCode(app.code)}</div>
+                </div>
+                <div style="font-size:1.2rem; color:#cbd5e1;" id="copy-text">複製</div>
+                <div class="copied-toast">已複製</div>
+            `;
+            
+            div.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(app.code);
+                    const toast = div.querySelector('.copied-toast');
+                    toast.style.opacity = '1';
+                    setTimeout(() => toast.style.opacity = '0', 1000);
+                } catch (err) {
+                    console.error('Copy failed', err);
+                }
+            };
+            container.appendChild(div);
+        });
+    } catch (err) {
+        console.error("抓碼失敗：", err);
+    }
+}
+
+function formatCode(code) {
+    if(code.length === 6) return code.slice(0,3) + ' ' + code.slice(3);
+    return code;
+}
+
+function updateCountdown() {
+    const el = document.getElementById('time-left');
+    const bar = document.getElementById('progress-bar');
+    if (!JWT_TOKEN) return;
+    
+    const now = Math.floor(Date.now() / 1000);
+    const secs = 30 - (now % 30);
+    
+    if (el) el.textContent = secs;
+    
+    // 進度條平滑移動 (⁠*⁠´⁠ω⁠｀⁠*⁠)
+    if (bar) {
+        const percent = (secs / 30) * 100;
+        bar.style.width = percent + '%';
+        if(secs < 5) {
+            bar.style.background = '#ef4444'; // 最後衝刺變紅色！
+        } else {
+            bar.style.background = 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))';
+        }
+    }
+
+    // 核心修正：當秒數剛好是 30 (週期開始) 時，立即更新碼！
+    if (secs === 30) {
+        fetchCodes();
+    }
+}
+
+function logout() {
+    JWT_TOKEN = null;
+    localStorage.removeItem('jwt_token');
+    if (countdownInterval) clearInterval(countdownInterval);
+    try { turnstile.reset(); } catch(e){}
+    showMainContent(false);
+}
+
+(function initAuth() {
+    const token = localStorage.getItem('jwt_token');
+    if (token) {
+        JWT_TOKEN = token;
+        startSession();
+    }
+})();
+</script>
+
+</body>
+</html>
