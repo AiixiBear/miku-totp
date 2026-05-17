@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aiixi Bear的TOTP</title>
+<link rel="manifest" href="site.webmanifest" />
+<link rel="icon" href="https://bearshen.top/favicon.ico" type="image/ico">
+<link rel="preconnect" href="https://challenges.cloudflare.com">
+<style>
+    @font-face {
+        font-family: 'Huninn';
+        src: url('https://bearshen.top/fonts/Huninn-Regular.woff2') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+    }
+    :root {
+        --primary-color: #33dd99;
+        --secondary-color: #39c5bb;
+        --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --glass-bg: rgba(255, 255, 255, 0.95);
+        --text-color: #334155;
+    }
+
+    * { box-sizing: border-box; transition: all 0.3s ease; }
+
+    body {
+        font-family: 'Huninn', sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        background: var(--bg-gradient);
+        color: var(--text-color);
+        padding: 20px;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .container {
+        background: var(--glass-bg);
+        padding: 2.5rem;
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        width: 100%;
+        max-width: 480px;
+        text-align: center;
+        backdrop-filter: blur(10px);
+        animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        /* 登入後不強制置中 */
+        align-self: flex-start;
+        margin-top: 40px;
+    }
+
+    h1 {
+        margin: 0 0 20px 0;
+        font-size: 2rem;
+        background: -webkit-linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    input {
+        width: 100%;
+        padding: 12px 16px;
+        margin: 8px 0;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 1rem;
+        outline: none;
+        background: #f8fafc;
+    }
+
+    input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        margin-top: 10px;
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4); }
+    button:active { transform: translateY(0); }
+
+    .cf-turnstile { margin-top: 15px; display: flex; justify-content: center; }
+
+    #totp-codes { margin-top: 25px; display: grid; gap: 12px; }
+
+    .code-card {
+        background: white;
+        padding: 15px;
+        border-radius: 16px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+        overflow: hidden;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .code-card:hover { transform: scale(1.02); border-color: var(--primary-color); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+    .app-name { font-size: 0.9rem; color: #64748b; font-weight: 500; }
+    .app-code { font-size: 1.4rem; font-weight: 700; letter-spacing: 2px; color: var(--text-color); font-family: 'Poppins', monospace; }
+
+    .progress-container {
+        width: 100%;
+        height: 4px;
+        background: #e2e8f0;
+        border-radius: 2px;
+        margin-top: 20px;
+        overflow: hidden;
+        display: none;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        width: 100%;
+        transition: width 1s linear;
+    }
+
+    .timer-text { font-size: 0.8rem; color: #94a3b8; margin-top: 5px; display: block; }
+
+    .copied-toast {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(99, 102, 241, 0.9);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        border-radius: 16px;
+    }
+
+    #logout-button {
+        background: #fee2e2;
+        color: #ef4444;
+        box-shadow: none;
+        margin-top: 20px;
+    }
+    #logout-button:hover { background: #fecaca; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    #status { display: block; margin-top: 10px; font-size: 0.9rem; min-height: 20px; }
+
+    /* ===== 日誌面板 ===== */
+    #log-panel {
+        display: none;
+        background: var(--glass-bg);
+        padding: 2rem;
+        border-radius: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        width: 100%;
+        max-width: 560px;
+        align-self: flex-start;
+        margin-top: 40px;
+        animation: slideUp 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #log-panel h2 {
+        margin: 0 0 16px 0;
+        font-size: 1.2rem;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    #log-panel h2 .dot {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        display: inline-block;
+        box-shadow: 0 0 8px var(--primary-color);
+        animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    #log-list {
+        max-height: 520px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        scrollbar-width: thin;
+        scrollbar-color: #e2e8f0 transparent;
+    }
+
+    .log-entry {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 10px 14px;
+        border-left: 4px solid #e2e8f0;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .log-entry.info  { border-left-color: #33dd99; }
+    .log-entry.warn  { border-left-color: #f59e0b; background: #fffbeb; }
+    .log-entry.error { border-left-color: #ef4444; background: #fff5f5; }
+
+    .log-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+
+    .log-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 99px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .log-badge.info  { background: #d1fae5; color: #065f46; }
+    .log-badge.warn  { background: #fef3c7; color: #92400e; }
+    .log-badge.error { background: #fee2e2; color: #991b1b; }
+
+    .log-time { color: #94a3b8; font-size: 0.75rem; font-family: monospace; }
+
+    .log-event { color: #334155; font-weight: 600; margin-bottom: 2px; }
+
+    .log-detail { color: #64748b; font-size: 0.78rem; word-break: break-all; }
+
+    #log-refresh-btn {
+        margin-top: 14px;
+        background: #f1f5f9;
+        color: #475569;
+        box-shadow: none;
+        font-size: 0.85rem;
+        padding: 9px;
+        border-radius: 10px;
+    }
+    #log-refresh-btn:hover { background: #e2e8f0; transform: none; box-shadow: none; }
+
+    .log-empty { text-align: center; color: #94a3b8; padding: 30px 0; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Aiixi Miku TOTP</h1>
+    <div style="margin-bottom: 15px; font-size: 0.85rem; color: #64748b;">
+        裝置時間：<span id="now-datetime">Loading...</span><br />
+        伺服器時間：<span id="server-datetime">Loading...</span>
+    </div>
+
+    <div id="login-form">
+        <input type="text" id="username" placeholder="請輸入帳號" />
+        <input type="password" id="password" placeholder="請輸入密碼" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAACMc7m5CnLl1fmZs"></div>
+        <button onclick="login()">大便登入</button>
+    </div>
+
+    <span id="status" style="color:#ef4444;"></span>
+
+    <div id="main-content" style="display:none;">
+        <div id="countdown-wrapper">
+            <div class="progress-container" id="progress-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <span class="timer-text">下次更新：<span id="time-left">30</span> 秒</span>
+        </div>
+        <div id="totp-codes"></div>
+        <button id="logout-button" onclick="logout()">登出</button>
+    </div>
+</div>
+
+<!-- 日誌面板 -->
+<div id="log-panel">
+    <h2><span class="dot"></span> 系統日誌</h2>
+    <div id="log-list"><div class="log-empty">載入中…</div></div>
+    <button id="log-refresh-btn" onclick="fetchLogs()">🔄 重新整理</button>
+</div>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script>
+let JWT_TOKEN = null;
+let fetchInterval = null;
+let countdownInterval = null;
+let logInterval = null;
+let serverTimeOffset = 0;
+
+// ===== 時間工具 =====
+function formatDateTime(date) {
+    const pad = n => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} `
+         + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function updateCurrentDateTime() {
+    const now = new Date();
+    document.getElementById('now-datetime').textContent = formatDateTime(now);
+    document.getElementById('server-datetime').textContent = formatDateTime(new Date(Date.now() + serverTimeOffset));
+}
+updateCurrentDateTime();
+setInterval(updateCurrentDateTime, 1000);
+
+// ===== 顯示控制 =====
+function showMainContent(show) {
+    document.getElementById('login-form').style.display = show ? 'none' : 'block';
+    document.getElementById('main-content').style.display = show ? 'block' : 'none';
+    document.getElementById('log-panel').style.display = show ? 'block' : 'none';
+    const pc = document.getElementById('progress-container');
+    if (pc) pc.style.display = show ? 'block' : 'none';
+    if (!show) document.getElementById('status').textContent = '';
+}
+
+// ===== 登入 =====
+async function login() {
+    const usernameEl = document.getElementById('username');
+    const passwordEl = document.getElementById('password');
+    const token = turnstile.getResponse();
+
+    if (!usernameEl.value || !passwordEl.value) {
+        alert("嗚哇！帳號密碼是空的，我會看不見妳啦！ >_<");
+        return;
+    }
+    if (!token) {
+        alert("哼哼！請先完成我不是機器人驗證(⁠｡⁠・⁠/⁠/⁠/⁠・⁠｡⁠)");
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: usernameEl.value, password: passwordEl.value, cf_turnstile_token: token })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            document.getElementById('status').textContent = '登入失敗：' + (data.error || '未知錯誤');
+            turnstile.reset();
+            return;
+        }
+        JWT_TOKEN = data.token;
+        localStorage.setItem('jwt_token', data.token);
+        startSession();
+    } catch (err) {
+        console.error(err);
+        document.getElementById('status').textContent = '連線出錯了，心碎了啦 QQ';
+        turnstile.reset();
+    }
+}
+
+// ===== Session 啟動 =====
+async function startSession() {
+    try {
+        const res = await fetch('/api/validate', { headers: { 'Authorization': 'Bearer ' + JWT_TOKEN } });
+        const data = await res.json();
+        if (res.ok && data.serverTime) {
+            serverTimeOffset = data.serverTime - Date.now();
+        }
+        showMainContent(true);
+        fetchCodes();
+        fetchLogs();
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(updateCountdown, 1000);
+        // 每 30 秒自動刷新日誌
+        if (logInterval) clearInterval(logInterval);
+        logInterval = setInterval(fetchLogs, 30000);
+    } catch (e) {
+        logout();
+    }
+}
+
+// ===== 倒數計時 =====
+function updateCountdown() {
+    const el = document.getElementById('time-left');
+    const bar = document.getElementById('progress-bar');
+    if (!JWT_TOKEN) return;
+
+    const correctedNow = Math.floor((Date.now() + serverTimeOffset) / 1000);
+    const secs = 30 - (correctedNow % 30);
+
+    if (el) el.textContent = secs;
+    if (bar) {
+        bar.style.width = (secs / 30 * 100) + '%';
+        bar.style.background = secs < 5 ? '#ef4444' : 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))';
+    }
+    if (secs === 30) fetchCodes();
+}
+
+// ===== 抓 TOTP =====
+async function fetchCodes() {
+    if (!JWT_TOKEN) return;
+    try {
+        const res = await fetch('/api/totp', { headers: { 'Authorization': 'Bearer ' + JWT_TOKEN } });
+        const data = await res.json();
+        if (!res.ok) { logout(); return; }
+
+        const container = document.getElementById('totp-codes');
+        container.innerHTML = '';
+        data.result.forEach(app => {
+            const div = document.createElement('div');
+            div.className = 'code-card';
+            div.innerHTML = `
+                <div style="text-align:left">
+                    <div class="app-name">${app.name}</div>
+                    <div class="app-code">${formatCode(app.code)}</div>
+                </div>
+                <div style="font-size:1.2rem; color:#cbd5e1;">複製</div>
+                <div class="copied-toast">已複製</div>
+            `;
+            div.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(app.code);
+                    const toast = div.querySelector('.copied-toast');
+                    toast.style.opacity = '1';
+                    setTimeout(() => toast.style.opacity = '0', 1000);
+                } catch (err) { console.error('Copy failed', err); }
+            };
+            container.appendChild(div);
+        });
+    } catch (err) { console.error('抓碼失敗：', err); }
+}
+
+function formatCode(code) {
+    return code.length === 6 ? code.slice(0,3) + ' ' + code.slice(3) : code;
+}
+
+// ===== 抓日誌 =====
+async function fetchLogs() {
+    if (!JWT_TOKEN) return;
+    try {
+        const res = await fetch('/api/logs', { headers: { 'Authorization': 'Bearer ' + JWT_TOKEN } });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderLogs(data.logs || []);
+    } catch (err) { console.error('日誌讀取失敗：', err); }
+}
+
+function renderLogs(logs) {
+    const list = document.getElementById('log-list');
+    if (!logs.length) {
+        list.innerHTML = '<div class="log-empty">目前沒有日誌紀錄 ✨</div>';
+        return;
+    }
+    list.innerHTML = logs.map(log => {
+        const level = log.level || 'info';
+        const time = new Date(log.time).toLocaleString('zh-TW', { hour12: false });
+        // 組裝細節（排除已顯示的欄位）
+        const { time: _t, level: _l, event: _e, ...rest } = log;
+        const details = Object.entries(rest)
+            .filter(([k]) => k !== 'port') // port 不顯示
+            .map(([k, v]) => `<span style="color:#94a3b8">${k}:</span> ${v}`)
+            .join(' &nbsp;·&nbsp; ');
+
+        return `
+        <div class="log-entry ${level}">
+            <div class="log-meta">
+                <span class="log-badge ${level}">${level}</span>
+                <span class="log-time">${time}</span>
+            </div>
+            <div class="log-event">${log.event}</div>
+            ${details ? `<div class="log-detail">${details}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ===== 登出 =====
+function logout() {
+    JWT_TOKEN = null;
+    localStorage.removeItem('jwt_token');
+    if (countdownInterval) clearInterval(countdownInterval);
+    if (logInterval) clearInterval(logInterval);
+    try { turnstile.reset(); } catch(e) {}
+    showMainContent(false);
+}
+
+// ===== 自動登入 =====
+(function initAuth() {
+    const token = localStorage.getItem('jwt_token');
+    if (token) { JWT_TOKEN = token; startSession(); }
+})();
+</script>
+</body>
+</html>
