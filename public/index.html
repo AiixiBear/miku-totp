@@ -477,28 +477,39 @@ function renderLogs(logs) {
         list.innerHTML = '<div class="log-empty">目前沒有日誌紀錄 ✨</div>';
         return;
     }
-    list.innerHTML = logs.map(log => {
+
+    list.innerHTML = ''; // 清空
+
+    logs.forEach(log => {
         const level = log.level || 'info';
         const time = new Date(log.time).toLocaleString('zh-TW', { hour12: false });
-        // 組裝細節（排除已顯示的欄位）
-        const { time: _t, level: _l, event: _e, ...rest } = log;
-        const details = Object.entries(rest)
-            .filter(([k]) => k !== 'port') // port 不顯示
-            .map(([k, v]) => `<span style="color:#94a3b8">${k}:</span> ${v}`)
-            .join(' &nbsp;·&nbsp; ');
+        const { time: _t, level: _l, event: _e, port: _p, ...rest } = log;
 
-        return `
-        <div class="log-entry ${level}">
+        // 外層卡片用 innerHTML 寫靜態結構（無動態內容）
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${level}`;
+        entry.innerHTML = `
             <div class="log-meta">
                 <span class="log-badge ${level}">${level}</span>
-                <span class="log-time">${time}</span>
+                <span class="log-time"></span>
             </div>
-            <div class="log-event">${log.event}</div>
-            ${details ? `<div class="log-detail">${details}</div>` : ''}
-        </div>`;
-    }).join('');
-}
+            <div class="log-event"></div>
+            <div class="log-detail"></div>
+        `;
 
+        // 動態資料一律用 textContent，完全不經過 HTML 解析
+        entry.querySelector('.log-time').textContent = time;
+        entry.querySelector('.log-event').textContent = log.event;
+
+        const detailEl = entry.querySelector('.log-detail');
+        const detailParts = Object.entries(rest)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('  ·  ');
+        detailEl.textContent = detailParts;
+
+        list.appendChild(entry);
+    });
+}
 // ===== 登出 =====
 function logout() {
     JWT_TOKEN = null;

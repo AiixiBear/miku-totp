@@ -41,16 +41,35 @@ const logger = winston.createLogger({
     ]
 });
 
-// ===== 統一記錄函式（同時寫 winston + 記憶體）=====
+// ===== HTML 跳脫（防 XSS 存入日誌）=====
+function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
+
+function sanitizeMeta(meta) {
+    const clean = {};
+    for (const [k, v] of Object.entries(meta)) {
+        clean[k] = escapeHtml(String(v));
+    }
+    return clean;
+}
+
+// ===== 統一記錄函式 =====
 function log(level, event, meta = {}) {
     const entry = {
         time: new Date().toISOString(),
-        level,   // 'info' | 'warn' | 'error'
-        event,
-        ...meta
+        level,
+        event: escapeHtml(event),
+        ...sanitizeMeta(meta)   // ← 所有欄位都跳脫
     };
     pushLog(entry);
-    logger[level](event, meta);
+    logger[level](event, meta); // winston 寫原始值就好，不影響
 }
 
 // ===== 取得真實 IP（相容 Cloudflare / 反向代理）=====
@@ -68,13 +87,20 @@ app.use(express.json());
 
 // ===== 訪問日誌 Middleware =====
 app.use((req, res, next) => {
+    const ua = req.headers['user-agent'] || 'unknown';
+    
+    // 排除 Uptime Kuma 的監控流量，不記日誌
+    if (ua.toLowerCase().includes('uptime-kuma')) {
+        return next();
+    }
+
     // 只記錄頁面訪問，避免 API 輪詢洗爆日誌
     if (req.path === '/' || req.path === '/index.html') {
         log('info', '訪問網站', {
             method: req.method,
             path: req.path,
             ip: getClientIP(req),
-            userAgent: req.headers['user-agent'] || 'unknown'
+            userAgent: ua
         });
     }
     next();
@@ -139,21 +165,65 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ===== JWT 驗證中介層 =====
+// ===== JWT 驗證中介層（詳細記錄）=====
 function authMiddleware(req, res, next) {
     const authHeader = req.headers['authorization'];
-    if (!authHeader) return res.status(401).json({ error: 'missing token' });
+    const ip = getClientIP(req);
+    const ua = req.headers['user-agent'] || 'unknown';
+
+    // 排除 Uptime Kuma，避免監控工具觸發未授權告警
+    if (ua.toLowerCase().includes('uptime-kuma')) {
+        if (!authHeader) return res.status(401).json({ error: 'missing token' });
+        const token = authHeader.split(' ')[1];
+        if (!token) return res.status(401).json({ error: 'malformed token' });
+        try {
+            jwt.verify(token, process.env.JWT_SECRET);
+            return next();
+        } catch (err) {
+            return res.status(401).json({ error: 'invalid token' });
+        }
+    }
+
+    // 1. 完全沒有帶 Authorization 標頭
+    if (!authHeader) {
+        log('warn', '未授權的 API 存取嘗試（缺少 Token）', {
+            method: req.method,
+            path: req.path,
+            ip,
+            userAgent: ua,
+            status: 'AUTH_MISSING_TOKEN'
+        });
+        return res.status(401).json({ error: 'missing token' });
+    }
 
     const token = authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'malformed token' });
+    
+    // 2. 有帶標頭但格式錯誤（例如只寫了 Bearer 後面沒空白）
+    if (!token) {
+        log('warn', '未授權的 API 存取嘗試（Token 格式錯誤）', {
+            method: req.method,
+            path: req.path,
+            ip,
+            userAgent: ua,
+            status: 'AUTH_MALFORMED_TOKEN'
+        });
+        return res.status(401).json({ error: 'malformed token' });
+    }
 
     try {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
         req.user = payload;
         next();
     } catch (err) {
-        const ip = getClientIP(req);
-        log('warn', 'Token 驗證失敗', { ip, error: err.message });
+        // 3. Token 存在但驗證失敗（過期、偽造、或密鑰不對）
+        log('warn', '未授權的 API 存取嘗試（Token 驗證失敗）', {
+            method: req.method,
+            path: req.path,
+            ip,
+            userAgent: ua,
+            error: err.message,
+            status: 'AUTH_INVALID_TOKEN'
+        });
         return res.status(401).json({ error: 'invalid or expired token' });
     }
 }
@@ -194,6 +264,22 @@ app.get('/api/logs', authMiddleware, (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ===== 處理 404 錯誤與未授權路由探測 =====
+app.use((req, res, next) => {
+    const ip = getClientIP(req);
+    const ua = req.headers['user-agent'] || 'unknown';
+
+    // 記錄未知的路徑訪問，通常為掃描或誤入
+    log('warn', '未知的路由訪問 (404)', {
+        method: req.method,
+        path: req.path,
+        ip: ip,
+        userAgent: ua
+    });
+
+    res.status(404).json({ error: 'not found' });
 });
 
 // ===== 啟動 server =====
