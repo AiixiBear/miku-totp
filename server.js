@@ -125,6 +125,11 @@ try {
 
 // ===== Cloudflare Turnstile 驗證 =====
 async function verifyTurnstile(token) {
+    if (!token) {
+        logger.warn('Turnstile token 為空');
+        return false;
+    }
+
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -133,7 +138,9 @@ async function verifyTurnstile(token) {
             response: token
         })
     });
+
     const data = await res.json();
+    logger.info('Turnstile 驗證結果', { success: data.success, errorCodes: data['error-codes'] }); // ← 看這裡
     return data.success;
 }
 
@@ -145,13 +152,19 @@ app.post('/api/login', async (req, res) => {
     try {
         const { username, password, cf_turnstile_token } = req.body;
 
+        const turnstileOk = await verifyTurnstile(cf_turnstile_token);
+        if (!turnstileOk) {
+            log('warn', '登入失敗：Turnstile 驗證未通過', { ip, userAgent: ua });
+            return res.status(403).json({ error: 'turnstile verification failed' });
+        }
+
         const user = users.find(u => u.username === username);
         if (!user) {
             log('warn', '登入失敗：帳號不存在', { username, ip, userAgent: ua });
             return res.status(401).json({ error: 'invalid credentials' });
         }
 
-        if (!bcrypt.compareSync(password, user.password)) {
+        if (!bcrypt.compare(password, user.password)) {
             log('warn', '登入失敗：密碼錯誤', { username, ip, userAgent: ua });
             return res.status(401).json({ error: 'invalid credentials' });
         }
