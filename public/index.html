@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aiixi Bear的TOTP</title>
 <link rel="manifest" href="site.webmanifest" />
-<link rel="icon" href="https://bearshen.top/favicon.ico" type="image/ico">
+<link rel="preconnect" href="https://aiixi.cc" crossorigin="">
+<link rel="icon" href="https://aiixi.cc/favicon.ico" type="image/ico">
 <link rel="preconnect" href="https://challenges.cloudflare.com">
+
 <style>
     @font-face {
         font-family: 'Huninn';
-        src: url('https://bearshen.top/fonts/Huninn-Regular.woff2') format('truetype');
+        src: url('https://aiixi.cc/fonts/Huninn-Regular.woff2') format('truetype');
         font-weight: 400;
         font-style: normal;
         font-display: swap;
@@ -18,8 +20,7 @@
     :root {
         --primary-color: #33dd99;
         --secondary-color: #39c5bb;
-        --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --glass-bg: rgba(255, 255, 255, 0.95);
+        --glass-bg: rgba(255, 255, 255, 0.6);
         --text-color: #334155;
     }
 
@@ -32,7 +33,11 @@
         display: flex;
         justify-content: center;
         align-items: flex-start;
-        background: var(--bg-gradient);
+        background-image: url('https://snowmiku.com/2026/images/index/mv_hero.webp');
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: cover;
+        background-attachment: fixed; 
         color: var(--text-color);
         padding: 20px;
         gap: 20px;
@@ -43,15 +48,17 @@
         background: var(--glass-bg);
         padding: 2.5rem;
         border-radius: 24px;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
         width: 100%;
         max-width: 480px;
         text-align: center;
-        backdrop-filter: blur(10px);
+        /*backdrop-filter: blur(5px);*/
         animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-        /* 登入後不強制置中 */
         align-self: flex-start;
         margin-top: 40px;
+        /*-webkit-backdrop-filter: blur(5px);*/
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 16px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     }
 
     h1 {
@@ -102,11 +109,8 @@
     #totp-codes { margin-top: 25px; display: grid; gap: 12px; }
 
     .code-card {
-        background: white;
+        background: rgba(255, 255, 255, 0.5);
         padding: 15px;
-        border-radius: 16px;
-        border: 1px solid #f1f5f9;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         cursor: pointer;
         display: flex;
         justify-content: space-between;
@@ -115,6 +119,10 @@
         overflow: hidden;
         -webkit-user-select: none;
         user-select: none;
+        -webkit-backdrop-filter: blur(5px); /* 確保 Safari 瀏覽器相容性 */
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 16px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     }
 
     .code-card:hover { transform: scale(1.02); border-color: var(--primary-color); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
