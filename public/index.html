@@ -18,10 +18,10 @@
         font-display: swap;
     }
     :root {
-        --primary-color: #33dd99;
-        --secondary-color: #39c5bb;
+        --primary-color: #86CECB;
+        --secondary-color: #86cecb;
         --glass-bg: rgba(255, 255, 255, 0.6);
-        --text-color: #334155;
+        --text-color: #000000;
     }
 
     * { box-sizing: border-box; transition: all 0.3s ease; }
@@ -147,12 +147,12 @@
         transition: width 1s linear;
     }
 
-    .timer-text { font-size: 0.8rem; color: #94a3b8; margin-top: 5px; display: block; }
+    .timer-text { font-size: 0.8rem; color: var(--text-color); margin-top: 5px; display: block; }
 
     .copied-toast {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(99, 102, 241, 0.9);
+        background: rgba(134, 206, 203, 0.9);
         color: white;
         display: flex;
         align-items: center;
@@ -242,7 +242,7 @@
         to { opacity: 1; transform: translateY(0); }
     }
 
-    .log-entry.info  { border-left-color: #33dd99; }
+    .log-entry.info  { border-left-color: #86CECB; }
     .log-entry.warn  { border-left-color: #f59e0b; background: #fffbeb; }
     .log-entry.error { border-left-color: #ef4444; background: #fff5f5; }
 
@@ -289,37 +289,37 @@
 
 <div class="container">
     <h1>Aiixi Miku TOTP</h1>
-    <div style="margin-bottom: 15px; font-size: 0.85rem; color: #64748b;">
+    <div style="margin-bottom: 15px; font-size: 0.85rem; color: var(--text-color);">
         裝置時間：<span id="now-datetime">Loading...</span><br />
         伺服器時間：<span id="server-datetime">Loading...</span>
     </div>
 
     <div id="login-form">
-        <input type="text" id="username" placeholder="請輸入帳號" />
-        <input type="password" id="password" placeholder="請輸入密碼" />
+        <input type="text" id="username" placeholder="帳號" />
+        <input type="password" id="password" placeholder="密碼" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAACMc7m5CnLl1fmZs"></div>
         <button onclick="login()">大便登入</button>
     </div>
 
-    <span id="status" style="color:#ef4444;"></span>
+    <span id="status" style="color:#ff0000;"></span>
 
     <div id="main-content" style="display:none;">
         <div id="countdown-wrapper">
             <div class="progress-container" id="progress-container">
                 <div class="progress-bar" id="progress-bar"></div>
             </div>
-            <span class="timer-text">下次更新：<span id="time-left">30</span> 秒</span>
+            <span class="timer-text">下次更新：<span id="time-left">-</span> 秒</span>
         </div>
         <div id="totp-codes"></div>
-        <button id="logout-button" onclick="logout()">登出</button>
+        <button id="logout-button" onclick="logout()">大便登出</button>
     </div>
 </div>
 
 <!-- 日誌面板 -->
 <div id="log-panel">
-    <h2><span class="dot"></span> 系統日誌</h2>
+    <h2><span class="dot"></span> 大便日誌</h2>
     <div id="log-list"><div class="log-empty">載入中…</div></div>
-    <button id="log-refresh-btn" onclick="fetchLogs()">🔄 重新整理</button>
+    <button id="log-refresh-btn" onclick="fetchLogs()">重新整理</button>
 </div>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
@@ -482,7 +482,7 @@ async function fetchLogs() {
 function renderLogs(logs) {
     const list = document.getElementById('log-list');
     if (!logs.length) {
-        list.innerHTML = '<div class="log-empty">目前沒有日誌紀錄 ✨</div>';
+        list.innerHTML = '<div class="log-empty">目前沒有日誌紀錄</div>';
         return;
     }
 
