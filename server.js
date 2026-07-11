@@ -163,8 +163,9 @@ app.post('/api/login', async (req, res) => {
             log('warn', '登入失敗：帳號不存在', { username, ip, userAgent: ua });
             return res.status(401).json({ error: 'invalid credentials' });
         }
-
-        if (!bcrypt.compare(password, user.password)) {
+        
+        const isPasswordVaild = await bcrypt.compare(password, user.password);
+        if (!isPasswordVaild) {
             log('warn', '登入失敗：密碼錯誤', { username, ip, userAgent: ua });
             return res.status(401).json({ error: 'invalid credentials' });
         }
