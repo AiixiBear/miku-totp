@@ -173,6 +173,71 @@
     }
     #logout-button:hover { background: #fecaca; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
 
+    /* ===== Passkey ===== */
+    #passkey-login-button {
+        background: #fff;
+        color: var(--text-color);
+        border: 2px solid var(--primary-color);
+        box-shadow: none;
+    }
+    #passkey-login-button:hover { background: #f0fdfc; box-shadow: 0 4px 12px rgba(134, 206, 203, 0.3); }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 14px 0;
+        color: #94a3b8;
+        font-size: 0.8rem;
+    }
+    .divider::before, .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #e2e8f0;
+    }
+
+    #passkey-panel {
+        margin-top: 25px;
+        text-align: left;
+    }
+    #passkey-panel h3 {
+        margin: 0 0 10px 0;
+        font-size: 1rem;
+        color: #475569;
+    }
+    .passkey-item {
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+    }
+    .passkey-item .name { font-weight: 600; }
+    .passkey-item .meta { color: #64748b; font-size: 0.75rem; }
+    .passkey-delete-btn {
+        width: auto;
+        margin: 0;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        background: #fee2e2;
+        color: #ef4444;
+        box-shadow: none;
+    }
+    .passkey-delete-btn:hover { background: #fecaca; }
+    #add-passkey-button {
+        background: #f1f5f9;
+        color: #475569;
+        box-shadow: none;
+        font-size: 0.9rem;
+    }
+    #add-passkey-button:hover { background: #e2e8f0; }
+    #passkey-empty { color: #94a3b8; font-size: 0.85rem; padding: 8px 0; }
+
     @keyframes slideUp {
         from { opacity: 0; transform: translateY(30px); }
         to { opacity: 1; transform: translateY(0); }
@@ -283,6 +348,56 @@
     #log-refresh-btn:hover { background: #e2e8f0; transform: none; box-shadow: none; }
 
     .log-empty { text-align: center; color: #94a3b8; padding: 30px 0; font-size: 0.9rem; }
+
+    /* ===== 設定區塊 ===== */
+    #settings-panel {
+        margin-top: 20px;
+        text-align: left;
+        padding-top: 15px;
+        border-top: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    #settings-panel h3 {
+        margin: 0 0 10px 0;
+        font-size: 1rem;
+        color: #475569;
+    }
+    .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        user-select: none;
+    }
+    .toggle-row input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: var(--primary-color);
+        cursor: pointer;
+    }
+    .toggle-row input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.5; }
+    .settings-hint {
+        display: none;
+        margin-top: 8px;
+        font-size: 0.78rem;
+        color: #94a3b8;
+    }
+
+    /* ===== 鎖定畫面 ===== */
+    #lock-screen {
+        display: none;
+        text-align: center;
+    }
+    #lock-icon { font-size: 2.5rem; margin-bottom: 10px; }
+    #lock-status { display: block; margin-top: 10px; font-size: 0.9rem; color: #ff0000; min-height: 20px; }
+    #unlock-logout-button {
+        background: #f1f5f9;
+        color: #475569;
+        box-shadow: none;
+        margin-top: 10px;
+    }
+    #unlock-logout-button:hover { background: #e2e8f0; }
 </style>
 </head>
 <body>
@@ -299,6 +414,16 @@
         <input type="password" id="password" placeholder="密碼" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAACMc7m5CnLl1fmZs"></div>
         <button onclick="login()">大便登入</button>
+        <div class="divider">或</div>
+        <button id="passkey-login-button" onclick="loginWithPasskey()">🔑 使用 Passkey 登入</button>
+    </div>
+
+    <div id="lock-screen">
+        <div id="lock-icon">🔒</div>
+        <p>已啟用開啟即驗證，請使用 Passkey 解鎖</p>
+        <button onclick="unlockWithPasskey()">🔑 使用 Passkey 解鎖</button>
+        <button id="unlock-logout-button" onclick="logout()">改用帳密登入</button>
+        <span id="lock-status"></span>
     </div>
 
     <span id="status" style="color:#ff0000;"></span>
@@ -311,6 +436,22 @@
             <span class="timer-text">下次更新：<span id="time-left">-</span> 秒</span>
         </div>
         <div id="totp-codes"></div>
+
+        <div id="passkey-panel">
+            <h3>🔑 Passkey 裝置管理</h3>
+            <div id="passkey-list"><div id="passkey-empty">載入中…</div></div>
+            <button id="add-passkey-button" onclick="registerPasskey()">＋ 新增這台裝置的 Passkey</button>
+        </div>
+
+        <div id="settings-panel">
+            <h3>⚙️ 安全設定</h3>
+            <label class="toggle-row">
+                <input type="checkbox" id="require-passkey-toggle" onchange="toggleRequirePasskey(this.checked)" />
+                <span>每次開啟都要用 Passkey 驗證</span>
+            </label>
+            <div id="settings-hint" class="settings-hint"></div>
+        </div>
+
         <button id="logout-button" onclick="logout()">大便登出</button>
     </div>
 </div>
@@ -323,6 +464,7 @@
 </div>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script src="https://unpkg.com/@simplewebauthn/browser@13/dist/bundle/index.umd.min.js"></script>
 <script>
 let JWT_TOKEN = null;
 let fetchInterval = null;
@@ -350,9 +492,51 @@ function showMainContent(show) {
     document.getElementById('login-form').style.display = show ? 'none' : 'block';
     document.getElementById('main-content').style.display = show ? 'block' : 'none';
     document.getElementById('log-panel').style.display = show ? 'block' : 'none';
+    document.getElementById('lock-screen').style.display = 'none';
     const pc = document.getElementById('progress-container');
     if (pc) pc.style.display = show ? 'block' : 'none';
     if (!show) document.getElementById('status').textContent = '';
+}
+
+function showLockScreen() {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('main-content').style.display = 'none';
+    document.getElementById('log-panel').style.display = 'none';
+    document.getElementById('lock-screen').style.display = 'block';
+}
+
+// ===== 開啟即驗證 Passkey 設定（存於本機瀏覽器）=====
+const REQUIRE_PASSKEY_KEY = 'require_passkey_unlock';
+
+function getRequirePasskeyUnlock() {
+    const v = localStorage.getItem(REQUIRE_PASSKEY_KEY);
+    return v === null ? true : v === 'true';
+}
+
+function setRequirePasskeyUnlock(value) {
+    localStorage.setItem(REQUIRE_PASSKEY_KEY, value ? 'true' : 'false');
+}
+
+function toggleRequirePasskey(checked) {
+    setRequirePasskeyUnlock(checked);
+}
+
+// 依目前已註冊的 Passkey 數量，同步設定區塊的勾選狀態
+function updateSettingsPasskeyState(count) {
+    const toggle = document.getElementById('require-passkey-toggle');
+    const hint = document.getElementById('settings-hint');
+    if (!toggle || !hint) return;
+    if (count === 0) {
+        toggle.checked = false;
+        toggle.disabled = true;
+        setRequirePasskeyUnlock(false);
+        hint.textContent = '請先新增至少一組 Passkey，才能開啟這個功能';
+        hint.style.display = 'block';
+    } else {
+        toggle.disabled = false;
+        toggle.checked = getRequirePasskeyUnlock();
+        hint.style.display = 'none';
+    }
 }
 
 // ===== 登入 =====
@@ -403,6 +587,7 @@ async function startSession() {
         showMainContent(true);
         fetchCodes();
         fetchLogs();
+        fetchPasskeys();
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(updateCountdown, 1000);
         // 每 30 秒自動刷新日誌
@@ -410,6 +595,183 @@ async function startSession() {
         logInterval = setInterval(fetchLogs, 30000);
     } catch (e) {
         logout();
+    }
+}
+
+// ===== Passkey 登入 =====
+async function loginWithPasskey() {
+    const statusEl = document.getElementById('status');
+    if (!window.SimpleWebAuthnBrowser || !window.SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+        statusEl.textContent = '這個瀏覽器不支援 Passkey QQ';
+        return;
+    }
+    try {
+        const optionsRes = await fetch('/api/passkey/login-options');
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) {
+            statusEl.textContent = options.error === 'no passkeys registered'
+                ? '目前還沒有註冊任何 Passkey，請先用帳密登入後新增'
+                : '無法取得 Passkey 登入資訊';
+            return;
+        }
+
+        const authResponse = await window.SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options });
+
+        const verifyRes = await fetch('/api/passkey/login-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(authResponse)
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) {
+            statusEl.textContent = 'Passkey 登入失敗：' + (verifyData.error || '未知錯誤');
+            return;
+        }
+
+        JWT_TOKEN = verifyData.token;
+        localStorage.setItem('jwt_token', verifyData.token);
+        startSession();
+    } catch (err) {
+        console.error(err);
+        if (err.name !== 'NotAllowedError') {
+            statusEl.textContent = 'Passkey 登入發生錯誤：' + err.message;
+        }
+    }
+}
+
+// ===== Passkey 新增 =====
+async function registerPasskey() {
+    if (!JWT_TOKEN) return;
+    if (!window.SimpleWebAuthnBrowser || !window.SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+        alert('這個瀏覽器不支援 Passkey QQ');
+        return;
+    }
+    try {
+        const optionsRes = await fetch('/api/passkey/register-options', {
+            headers: { 'Authorization': 'Bearer ' + JWT_TOKEN }
+        });
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) {
+            alert('無法取得註冊資訊：' + (options.error || '未知錯誤'));
+            return;
+        }
+
+        const regResponse = await window.SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+
+        const deviceName = prompt('幫這把 Passkey 取個名字吧（例如「我的 iPhone」）：', '') || '未命名裝置';
+
+        const verifyRes = await fetch('/api/passkey/register-verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + JWT_TOKEN
+            },
+            body: JSON.stringify({ ...regResponse, deviceName })
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) {
+            alert('Passkey 註冊失敗：' + (verifyData.error || '未知錯誤'));
+            return;
+        }
+
+        fetchPasskeys();
+    } catch (err) {
+        console.error(err);
+        if (err.name !== 'NotAllowedError') {
+            alert('Passkey 註冊發生錯誤：' + err.message);
+        }
+    }
+}
+
+// ===== Passkey 列表 =====
+async function fetchPasskeys() {
+    if (!JWT_TOKEN) return;
+    try {
+        const res = await fetch('/api/passkey/list', { headers: { 'Authorization': 'Bearer ' + JWT_TOKEN } });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderPasskeys(data.passkeys || []);
+    } catch (err) { console.error('Passkey 列表讀取失敗：', err); }
+}
+
+function renderPasskeys(passkeys) {
+    const list = document.getElementById('passkey-list');
+    if (!passkeys.length) {
+        list.innerHTML = '<div id="passkey-empty">目前沒有註冊任何 Passkey</div>';
+    } else {
+        list.innerHTML = '';
+        passkeys.forEach(pk => {
+            const item = document.createElement('div');
+            item.className = 'passkey-item';
+            item.innerHTML = `
+                <div>
+                    <div class="name"></div>
+                    <div class="meta"></div>
+                </div>
+                <button class="passkey-delete-btn">刪除</button>
+            `;
+            item.querySelector('.name').textContent = pk.name;
+            item.querySelector('.meta').textContent = new Date(pk.createdAt).toLocaleString('zh-TW', { hour12: false });
+            item.querySelector('.passkey-delete-btn').onclick = () => deletePasskey(pk.id);
+            list.appendChild(item);
+        });
+    }
+    updateSettingsPasskeyState(passkeys.length);
+}
+
+async function deletePasskey(id) {
+    if (!JWT_TOKEN) return;
+    if (!confirm('確定要刪除這把 Passkey 嗎？')) return;
+    try {
+        const res = await fetch('/api/passkey/' + encodeURIComponent(id), {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + JWT_TOKEN }
+        });
+        if (!res.ok) {
+            alert('刪除失敗');
+            return;
+        }
+        fetchPasskeys();
+    } catch (err) { console.error('刪除 Passkey 失敗：', err); }
+}
+
+// ===== 開啟即驗證：用 Passkey 解鎖現有 session =====
+async function unlockWithPasskey() {
+    const statusEl = document.getElementById('lock-status');
+    statusEl.textContent = '';
+    if (!window.SimpleWebAuthnBrowser || !window.SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+        statusEl.textContent = '這個瀏覽器不支援 Passkey，請改用帳密登入';
+        return;
+    }
+    try {
+        const optionsRes = await fetch('/api/passkey/login-options');
+        const options = await optionsRes.json();
+        if (!optionsRes.ok) {
+            statusEl.textContent = '無法取得 Passkey 驗證資訊';
+            return;
+        }
+
+        const authResponse = await window.SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options });
+
+        const verifyRes = await fetch('/api/passkey/login-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(authResponse)
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) {
+            statusEl.textContent = '解鎖失敗：' + (verifyData.error || '未知錯誤');
+            return;
+        }
+
+        JWT_TOKEN = verifyData.token;
+        localStorage.setItem('jwt_token', verifyData.token);
+        startSession();
+    } catch (err) {
+        console.error(err);
+        if (err.name !== 'NotAllowedError') {
+            statusEl.textContent = '發生錯誤：' + err.message;
+        }
     }
 }
 
@@ -531,8 +893,24 @@ function logout() {
 // ===== 自動登入 =====
 (function initAuth() {
     const token = localStorage.getItem('jwt_token');
-    if (token) { JWT_TOKEN = token; startSession(); }
+    if (!token) return;
+    JWT_TOKEN = token;
+    if (getRequirePasskeyUnlock()) {
+        showLockScreen();
+    } else {
+        startSession();
+    }
 })();
+
+// ===== 若瀏覽器不支援 Passkey，隱藏相關按鈕 =====
+window.addEventListener('DOMContentLoaded', () => {
+    if (!window.SimpleWebAuthnBrowser || !window.SimpleWebAuthnBrowser.browserSupportsWebAuthn()) {
+        const btn = document.getElementById('passkey-login-button');
+        const divider = document.querySelector('.divider');
+        if (btn) btn.style.display = 'none';
+        if (divider) divider.style.display = 'none';
+    }
+});
 </script>
 </body>
 </html>

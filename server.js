@@ -8,12 +8,25 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const winston = require('winston');
 const fs = require('fs');
+const {
+    generateRegistrationOptions,
+    verifyRegistrationResponse,
+    generateAuthenticationOptions,
+    verifyAuthenticationResponse
+} = require('@simplewebauthn/server');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== 建立 logs 資料夾 =====
+// ===== Passkey (WebAuthn) 設定 =====
+// RP_ID 為網站網域（不含 https:// 與路徑），ORIGIN 為完整網址
+const RP_NAME = process.env.RP_NAME || 'Aiixi Bear TOTP';
+const RP_ID = process.env.RP_ID || 'miku.aiixi.cc';
+const ORIGIN = process.env.ORIGIN || `https://${RP_ID}`;
+
+// ===== 建立 logs / data 資料夾 =====
 if (!fs.existsSync('logs')) fs.mkdirSync('logs');
+if (!fs.existsSync('data')) fs.mkdirSync('data');
 
 // ===== 記憶體日誌（最新 100 筆，供 API 使用）=====
 const memoryLogs = [];
@@ -122,6 +135,25 @@ try {
     logger.error('❌ TOTP_APPS JSON 格式錯誤');
     process.exit(1);
 }
+
+// ===== Passkey 憑證存取（單一使用者，可有多把裝置）=====
+const PASSKEYS_FILE = path.join(__dirname, 'data', 'passkeys.json');
+
+function loadPasskeys() {
+    try {
+        return JSON.parse(fs.readFileSync(PASSKEYS_FILE, 'utf-8'));
+    } catch (err) {
+        return [];
+    }
+}
+
+function savePasskeys(list) {
+    fs.writeFileSync(PASSKEYS_FILE, JSON.stringify(list, null, 2));
+}
+
+// 用來暫存目前這一次註冊/登入流程的 challenge（單一使用者系統，簡化為單一變數）
+let currentRegChallenge = null;
+let currentAuthChallenge = null;
 
 // ===== Cloudflare Turnstile 驗證 =====
 async function verifyTurnstile(token) {
@@ -272,6 +304,156 @@ app.get('/api/validate', authMiddleware, (req, res) => {
 // ===== API: 取得日誌（需登入）=====
 app.get('/api/logs', authMiddleware, (req, res) => {
     res.json({ logs: memoryLogs });
+});
+
+// ===== Passkey API: 取得註冊 options（需先登入）=====
+app.get('/api/passkey/register-options', authMiddleware, async (req, res) => {
+    try {
+        const passkeys = loadPasskeys();
+        const options = await generateRegistrationOptions({
+            rpName: RP_NAME,
+            rpID: RP_ID,
+            userName: req.user.username,
+            attestationType: 'none',
+            excludeCredentials: passkeys.map(pk => ({
+                id: pk.id,
+                transports: pk.transports
+            })),
+            authenticatorSelection: {
+                residentKey: 'preferred',
+                userVerification: 'preferred'
+            }
+        });
+        currentRegChallenge = options.challenge;
+        res.json(options);
+    } catch (err) {
+        log('error', 'Passkey 註冊 options 產生失敗', { error: err.message });
+        res.status(500).json({ error: 'server error' });
+    }
+});
+
+// ===== Passkey API: 驗證註冊結果（需先登入）=====
+app.post('/api/passkey/register-verify', authMiddleware, async (req, res) => {
+    const ip = getClientIP(req);
+    const ua = req.headers['user-agent'] || 'unknown';
+    try {
+        const { deviceName, ...credentialResponse } = req.body;
+        const verification = await verifyRegistrationResponse({
+            response: credentialResponse,
+            expectedChallenge: currentRegChallenge,
+            expectedOrigin: ORIGIN,
+            expectedRPID: RP_ID
+        });
+
+        if (!verification.verified || !verification.registrationInfo) {
+            log('warn', 'Passkey 註冊失敗：驗證未通過', { username: req.user.username, ip, userAgent: ua });
+            return res.status(400).json({ error: 'verification failed' });
+        }
+
+        const { credential } = verification.registrationInfo;
+        const passkeys = loadPasskeys();
+        passkeys.push({
+            id: credential.id,
+            publicKey: Buffer.from(credential.publicKey).toString('base64'),
+            counter: credential.counter,
+            transports: credential.transports || [],
+            name: (deviceName && String(deviceName).slice(0, 40)) || '未命名裝置',
+            createdAt: new Date().toISOString()
+        });
+        savePasskeys(passkeys);
+
+        log('info', 'Passkey 註冊成功', { username: req.user.username, ip, userAgent: ua });
+        res.json({ verified: true });
+    } catch (err) {
+        log('error', 'Passkey 註冊發生錯誤', { username: req.user.username, ip, userAgent: ua, error: err.message });
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// ===== Passkey API: 取得登入 options（免登入）=====
+app.get('/api/passkey/login-options', async (req, res) => {
+    try {
+        const passkeys = loadPasskeys();
+        if (passkeys.length === 0) {
+            return res.status(400).json({ error: 'no passkeys registered' });
+        }
+        const options = await generateAuthenticationOptions({
+            rpID: RP_ID,
+            userVerification: 'preferred',
+            allowCredentials: passkeys.map(pk => ({
+                id: pk.id,
+                transports: pk.transports
+            }))
+        });
+        currentAuthChallenge = options.challenge;
+        res.json(options);
+    } catch (err) {
+        log('error', 'Passkey 登入 options 產生失敗', { error: err.message });
+        res.status(500).json({ error: 'server error' });
+    }
+});
+
+// ===== Passkey API: 驗證登入並簽發 JWT（免登入）=====
+app.post('/api/passkey/login-verify', async (req, res) => {
+    const ip = getClientIP(req);
+    const ua = req.headers['user-agent'] || 'unknown';
+    try {
+        const passkeys = loadPasskeys();
+        const stored = passkeys.find(pk => pk.id === req.body.id);
+        if (!stored) {
+            log('warn', 'Passkey 登入失敗：找不到憑證', { ip, userAgent: ua });
+            return res.status(401).json({ error: 'credential not found' });
+        }
+
+        const verification = await verifyAuthenticationResponse({
+            response: req.body,
+            expectedChallenge: currentAuthChallenge,
+            expectedOrigin: ORIGIN,
+            expectedRPID: RP_ID,
+            credential: {
+                id: stored.id,
+                publicKey: Buffer.from(stored.publicKey, 'base64'),
+                counter: stored.counter,
+                transports: stored.transports
+            }
+        });
+
+        if (!verification.verified) {
+            log('warn', 'Passkey 登入失敗：驗證未通過', { ip, userAgent: ua });
+            return res.status(401).json({ error: 'verification failed' });
+        }
+
+        stored.counter = verification.authenticationInfo.newCounter;
+        savePasskeys(passkeys);
+
+        const username = users[0].username;
+        const token = jwt.sign({ username }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        log('info', 'Passkey 登入成功', { username, credentialName: stored.name, ip, userAgent: ua });
+        res.json({ token });
+    } catch (err) {
+        log('error', 'Passkey 登入發生錯誤', { ip, userAgent: ua, error: err.message });
+        res.status(500).json({ error: 'server error' });
+    }
+});
+
+// ===== Passkey API: 列出已註冊裝置（需登入）=====
+app.get('/api/passkey/list', authMiddleware, (req, res) => {
+    const passkeys = loadPasskeys();
+    res.json({
+        passkeys: passkeys.map(({ publicKey, counter, ...rest }) => rest)
+    });
+});
+
+// ===== Passkey API: 刪除裝置（需登入）=====
+app.delete('/api/passkey/:id', authMiddleware, (req, res) => {
+    const passkeys = loadPasskeys();
+    const next = passkeys.filter(pk => pk.id !== req.params.id);
+    if (next.length === passkeys.length) {
+        return res.status(404).json({ error: 'not found' });
+    }
+    savePasskeys(next);
+    log('info', 'Passkey 已刪除', { username: req.user.username, credentialId: req.params.id });
+    res.json({ success: true });
 });
 
 // ===== 靜態前端 =====
