@@ -99,6 +99,7 @@
         font-weight: 600;
         cursor: pointer;
         box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        font-family: 'Huninn';
     }
 
     button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4); }
@@ -399,6 +400,7 @@
         color: #475569;
         box-shadow: none;
         margin-top: 10px;
+        font-family: 'Huninn';
     }
     #unlock-logout-button:hover { background: #e2e8f0; }
 </style>
@@ -416,7 +418,7 @@
         <input type="text" id="username" placeholder="帳號" />
         <input type="password" id="password" placeholder="密碼" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAACMc7m5CnLl1fmZs"></div>
-        <button onclick="login()">大便登入</button>
+        <button onclick="login()" >大便登入</button>
         <div class="divider">或</div>
         <button id="passkey-login-button" onclick="loginWithPasskey()">🔑 使用 Passkey 登入</button>
     </div>
@@ -424,7 +426,7 @@
     <div id="lock-screen">
         <div id="lock-icon">🔒</div>
         <p>已啟用開啟即驗證，請使用 Passkey 解鎖</p>
-        <button onclick="unlockWithPasskey()">🔑 使用 Passkey 解鎖</button>
+        <button onclick="unlockWithPasskey()" id="passkey-login-button" >🔑 使用 Passkey 解鎖</button>
         <button id="unlock-logout-button" onclick="logout()">改用帳密登入</button>
         <span id="lock-status"></span>
     </div>
