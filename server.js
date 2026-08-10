@@ -321,7 +321,7 @@ app.get('/api/passkey/register-options', authMiddleware, async (req, res) => {
             })),
             authenticatorSelection: {
                 residentKey: 'preferred',
-                userVerification: 'preferred'
+                userVerification: 'required'
             }
         });
         currentRegChallenge = options.challenge;
@@ -379,7 +379,7 @@ app.get('/api/passkey/login-options', async (req, res) => {
         }
         const options = await generateAuthenticationOptions({
             rpID: RP_ID,
-            userVerification: 'preferred',
+            userVerification: 'required',
             allowCredentials: passkeys.map(pk => ({
                 id: pk.id,
                 transports: pk.transports
